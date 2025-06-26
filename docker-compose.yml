@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: cognitive-postgres
+    environment:
+      POSTGRES_USER: cognitive
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cognitive_secure_password}
+      POSTGRES_DB: cognitive
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cognitive"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Future: Add Redis for caching
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: cognitive-redis
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis_data:/data
+  #   restart: unless-stopped
+
+  # Future: Add Qdrant for dedicated vector operations
+  # qdrant:
+  #   image: qdrant/qdrant
+  #   container_name: cognitive-qdrant
+  #   ports:
+  #     - "6333:6333"
+  #   volumes:
+  #     - qdrant_data:/qdrant/storage
+  #   restart: unless-stopped
+
+volumes:
+  postgres_data:
+  # redis_data:
+  # qdrant_data:
+
+networks:
+  default:
+    name: cognitive-network
