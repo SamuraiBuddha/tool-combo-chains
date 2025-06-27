@@ -6,7 +6,7 @@ services:
     container_name: cognitive-postgres
     environment:
       POSTGRES_USER: cognitive
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cognitive_secure_password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: cognitive
     ports:
       - "5432:5432"
