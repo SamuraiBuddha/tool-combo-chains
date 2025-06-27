@@ -19,10 +19,10 @@ from pydantic import BaseModel
 import structlog
 from dotenv import load_dotenv
 
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp.tools import Tool
-from mcp.types import TextContent, ToolResult
+from mcp.server import Server, NotificationOptions
+from mcp.server.models import InitializationOptions
+import mcp.server.stdio
+import mcp.types as types
 
 # Load environment variables
 load_dotenv()
@@ -60,6 +60,7 @@ class HybridMemoryServer:
         self.redis_client: Optional[redis.Redis] = None
         self.qdrant_client: Optional[QdrantClient] = None
         self.http_client: Optional[httpx.AsyncClient] = None
+        # Create server with proper initialization
         self.server = Server("hybrid-memory")
         self.setup_tools()
     
@@ -67,9 +68,9 @@ class HybridMemoryServer:
         """Register MCP tools"""
         
         @self.server.list_tools()
-        async def list_tools() -> List[Tool]:
+        async def list_tools() -> List[types.Tool]:
             return [
-                Tool(
+                types.Tool(
                     name="store_memory",
                     description="Store a memory entity with vector embedding and graph relationships",
                     inputSchema={
@@ -87,7 +88,7 @@ class HybridMemoryServer:
                         "required": ["entity_type", "name", "content"]
                     }
                 ),
-                Tool(
+                types.Tool(
                     name="recall_memory",
                     description="Recall memories using hybrid vector-graph search",
                     inputSchema={
@@ -101,7 +102,7 @@ class HybridMemoryServer:
                         "required": ["query"]
                     }
                 ),
-                Tool(
+                types.Tool(
                     name="add_observations",
                     description="Add observations to an existing memory entity",
                     inputSchema={
@@ -116,7 +117,7 @@ class HybridMemoryServer:
                         "required": ["entity_name", "observations"]
                     }
                 ),
-                Tool(
+                types.Tool(
                     name="create_relationship",
                     description="Create a relationship between two memory entities",
                     inputSchema={
@@ -130,7 +131,7 @@ class HybridMemoryServer:
                         "required": ["from_entity", "to_entity", "relationship_type"]
                     }
                 ),
-                Tool(
+                types.Tool(
                     name="find_patterns",
                     description="Find patterns across memories using clustering",
                     inputSchema={
@@ -141,7 +142,7 @@ class HybridMemoryServer:
                         }
                     }
                 ),
-                Tool(
+                types.Tool(
                     name="get_memory_stats",
                     description="Get statistics about the memory system",
                     inputSchema={
@@ -152,7 +153,7 @@ class HybridMemoryServer:
             ]
         
         @self.server.call_tool()
-        async def call_tool(name: str, arguments: Dict[str, Any]) -> List[ToolResult]:
+        async def call_tool(name: str, arguments: Dict[str, Any]) -> List[types.TextContent]:
             try:
                 logger.info(f"Tool called: {name}", instance=INSTANCE_ID, args=arguments)
                 
@@ -171,14 +172,16 @@ class HybridMemoryServer:
                 else:
                     result = {"error": f"Unknown tool: {name}"}
                 
-                return [ToolResult(
-                    content=[TextContent(text=json.dumps(result, indent=2))]
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps(result, indent=2)
                 )]
                 
             except Exception as e:
                 logger.error(f"Tool error: {name}", error=str(e), instance=INSTANCE_ID)
-                return [ToolResult(
-                    content=[TextContent(text=json.dumps({"error": str(e)}))]
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps({"error": str(e)})
                 )]
     
     async def initialize(self):
@@ -596,13 +599,25 @@ async def main():
         await server.initialize()
         logger.info("Starting Hybrid Memory MCP Server", instance=INSTANCE_ID)
         
-        async with stdio_server() as (read_stream, write_stream):
-            await server.server.run(read_stream, write_stream)
+        # Initialize options
+        init_options = InitializationOptions(
+            server_name="hybrid-memory",
+            server_version="0.1.0"
+        )
+        
+        # Run the server
+        async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
+            await server.server.run(
+                read_stream, 
+                write_stream,
+                init_options
+            )
             
     except KeyboardInterrupt:
         logger.info("Shutting down gracefully")
     except Exception as e:
         logger.error("Server error", error=str(e))
+        raise
     finally:
         await server.cleanup()
 
