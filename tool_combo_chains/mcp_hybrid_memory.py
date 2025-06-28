@@ -31,7 +31,7 @@ load_dotenv()
 logger = structlog.get_logger()
 
 # Configuration
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://cognitive:cognitive@localhost:5432/cognitive")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://cognitive:7HY25Pvj5FAW9sH8nJ8MNc4MRnwLnHIQppSFf7aH@127.0.0.1:5432/cognitive")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 EMBEDDING_API_URL = os.getenv("EMBEDDING_API_URL", "http://localhost:1234/v1/embeddings")
