@@ -8,7 +8,6 @@ import asyncio
 import hashlib
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from pathlib import Path
 
 import asyncpg
 import redis.asyncio as redis
@@ -21,21 +20,17 @@ import structlog
 from dotenv import load_dotenv
 
 from mcp.server import Server, NotificationOptions
-from mcp.server.models import InitializationOptions
+from mcp.server.models import InitializationOptions, ServerCapabilities
 import mcp.server.stdio
 import mcp.types as types
 
-# Load environment variables - fix path issue
-env_path = Path(__file__).parent.parent / '.env'
-if env_path.exists():
-    load_dotenv(env_path)
-else:
-    load_dotenv()  # Try default location
+# Load environment variables
+load_dotenv()
 
 # Configure structured logging
 logger = structlog.get_logger()
 
-# Configuration - Updated with correct password fallback
+# Configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://cognitive:7HY25Pvj5FAW9sH8nJ8MNc4MRnwLnHIQppSFf7aH@127.0.0.1:5432/cognitive")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
@@ -48,14 +43,6 @@ VECTOR_DIM = 768  # Granite embeddings
 COLLECTION_NAME = "cognitive_memory"
 CACHE_TTL = int(os.getenv("CACHE_TTL", "3600"))
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.7"))
-
-# Debug: Print what we loaded
-logger.info("Environment loaded", 
-    database_url_set=bool(os.getenv("DATABASE_URL")),
-    postgres_password_set=bool(os.getenv("POSTGRES_PASSWORD")),
-    env_path=str(env_path),
-    env_exists=env_path.exists()
-)
 
 class MemoryEntity(BaseModel):
     """Memory entity structure"""
@@ -201,7 +188,6 @@ class HybridMemoryServer:
         """Initialize all connections"""
         try:
             # PostgreSQL connection pool
-            logger.info("Connecting to PostgreSQL", url=DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else 'unknown')
             self.db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=5, max_size=20)
             
             # Redis connection
@@ -223,11 +209,11 @@ class HybridMemoryServer:
             self.http_client = httpx.AsyncClient(timeout=30.0)
             
             logger.info("Hybrid Memory Server initialized", 
-                        instance=INSTANCE_ID, 
-                        role=INSTANCE_ROLE,
-                        postgres="connected",
-                        redis="connected", 
-                        qdrant="connected")
+                       instance=INSTANCE_ID, 
+                       role=INSTANCE_ROLE,
+                       postgres="connected",
+                       redis="connected", 
+                       qdrant="connected")
             
         except Exception as e:
             logger.error("Failed to initialize", error=str(e))
@@ -238,7 +224,7 @@ class HybridMemoryServer:
         if self.db_pool:
             await self.db_pool.close()
         if self.redis_client:
-            await self.redis_client.close()
+            await self.redis_client.aclose()
         if self.http_client:
             await self.http_client.aclose()
     
@@ -613,13 +599,11 @@ async def main():
         await server.initialize()
         logger.info("Starting Hybrid Memory MCP Server", instance=INSTANCE_ID)
         
-        # Initialize options
+        # Initialize options with capabilities
         init_options = InitializationOptions(
             server_name="hybrid-memory",
             server_version="0.1.0",
-            capabilities=ServerCapabilities(
-                tools-ToolsCapability()
-            )
+            capabilities=ServerCapabilities()
         )
         
         # Run the server
