@@ -271,7 +271,36 @@ class HybridMemoryServer:
         
         # Get embedding
         embedding = await self.get_embedding(content)
+        async def store_memory(self, entity_type: str, name: str, content: str,
+                       metadata: Dict = None, observations: List[str] = None) -> Dict:
+    """Store memory in all three tiers"""
+    metadata = metadata or {}
+    observations = observations or []
+    
+    # Get embedding
+    embedding = await self.get_embedding(content)
+    
+    # Convert embedding list to pgvector string format
+    embedding_str = f"[{','.join(map(str, embedding))}]"
+    
+    async with self.db_pool.acquire() as conn:
+        # Store in PostgreSQL
+        entity_id = await conn.fetchval("""
+            INSERT INTO memory_entities (entity_type, name, content, embedding, metadata, created_by)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (entity_type, name) 
+            DO UPDATE SET content = $3, embedding = $4, metadata = $5, updated_at = NOW()
+            RETURNING id
+        """, entity_type, name, content, embedding_str, json.dumps(metadata), INSTANCE_ID)
         
+        # Add observations
+        for obs in observations:
+            obs_embedding = await self.get_embedding(obs)
+            obs_embedding_str = f"[{','.join(map(str, obs_embedding))}]"
+            await conn.execute("""
+                INSERT INTO observations (entity_id, observation, embedding, source)
+                VALUES ($1, $2, $3, $4)
+            """, entity_id, obs, obs_embedding_str, INSTANCE_ID)
         async with self.db_pool.acquire() as conn:
             # Store in PostgreSQL
             entity_id = await conn.fetchval("""
