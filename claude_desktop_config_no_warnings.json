@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "hybrid-memory": {
+      "command": "python",
+      "args": [
+        "-u",
+        "-W",
+        "ignore",
+        "-m",
+        "tool_combo_chains.mcp_hybrid_memory"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONWARNINGS": "ignore"
+      }
+    },
+    "hybrid-memory-alternative": {
+      "comment": "Alternative using batch wrapper if above doesn't work",
+      "command": "C:\\path\\to\\your\\tool-combo-chains\\run_hybrid_memory.bat"
+    }
+  }
+}
