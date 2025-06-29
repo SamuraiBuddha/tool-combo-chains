@@ -20,7 +20,7 @@ import structlog
 from dotenv import load_dotenv
 
 from mcp.server import Server, NotificationOptions
-from mcp.server.models import InitializationOptions
+from mcp.server.models import InitializationOptions, ServerCapabilities
 import mcp.server.stdio
 import mcp.types as types
 
@@ -224,7 +224,7 @@ class HybridMemoryServer:
         if self.db_pool:
             await self.db_pool.close()
         if self.redis_client:
-            await self.redis_client.close()
+            await self.redis_client.aclose()
         if self.http_client:
             await self.http_client.aclose()
     
@@ -599,10 +599,11 @@ async def main():
         await server.initialize()
         logger.info("Starting Hybrid Memory MCP Server", instance=INSTANCE_ID)
         
-        # Initialize options
+        # Initialize options with capabilities
         init_options = InitializationOptions(
             server_name="hybrid-memory",
-            server_version="0.1.0"
+            server_version="0.1.0",
+            capabilities=ServerCapabilities()
         )
         
         # Run the server
