@@ -8,6 +8,8 @@ RUN apt-get update && apt-get install -y \
     postgresql-server-dev-16 \
     curl \
     ca-certificates \
+    flex \
+    bison \
     && rm -rf /var/lib/apt/lists/*
 
 # Install pgvector
