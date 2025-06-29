@@ -16,10 +16,31 @@ Add this to your `claude_desktop_config.json` file to enable the Tool Combo Chai
 ```json
 {
   "mcpServers": {
+    "MCP_DOCKER": {
+      "command": "docker",
+      "args": ["mcp", "gateway", "run"],
+      "env": {
+        "LOCALAPPDATA": "C:\\Users\\JordanEhrig\\AppData\\Local",
+        "ProgramFiles": "C:\\Program Files"
+      }
+    },
+    "comfyui": {
+      "command": "python",
+      "args": ["-m", "mcp_comfyui"],
+      "cwd": "C:\\Users\\JordanEhrig\\Documents\\GitHub\\mcp-comfyui",
+      "env": {
+        "COMFYUI_HOST": "localhost",
+        "COMFYUI_PORT": "8188"
+      }
+    },  
+    "time-precision": {
+      "command": "python",
+      "args": ["-m", "mcp_time_precision", "--instance-id", "Melchior-001"]
+      }  
     "hybrid-memory": {
       "command": "python",
       "args": ["-m", "tool_combo_chains.mcp_hybrid_memory"],
-      "cwd": "C:\\Users\\SamuraiBuddha\\Documents\\GitHub\\tool-combo-chains",
+      "cwd": "C:\\Users\\JordanEhrig\\Documents\\GitHub\\tool-combo-chains",
       "env": {
         "DATABASE_URL": "postgresql://cognitive:cognitive_secure_password@localhost:5432/cognitive",
         "REDIS_URL": "redis://localhost:6379",
@@ -32,7 +53,7 @@ Add this to your `claude_desktop_config.json` file to enable the Tool Combo Chai
     "pattern-analyzer": {
       "command": "python", 
       "args": ["-m", "tool_combo_chains.mcp_pattern_analyzer"],
-      "cwd": "C:\\Users\\SamuraiBuddha\\Documents\\GitHub\\tool-combo-chains",
+      "cwd": "C:\\Users\\JordanEhrig\\Documents\\GitHub\\tool-combo-chains",
       "env": {
         "DATABASE_URL": "postgresql://cognitive:cognitive_secure_password@localhost:5432/cognitive",
         "QDRANT_URL": "http://localhost:6333"
@@ -40,7 +61,7 @@ Add this to your `claude_desktop_config.json` file to enable the Tool Combo Chai
     },
     "cognitive-sandbox": {
       "command": "node",
-      "args": ["C:\\Users\\SamuraiBuddha\\Documents\\GitHub\\tool-combo-chains\\servers\\cognitive-sandbox\\index.js"],
+      "args": ["C:\\Users\\JordanEhrig\\Documents\\GitHub\\tool-combo-chains\\servers\\cognitive-sandbox\\index.js"],
       "env": {
         "REDIS_URL": "redis://localhost:6379",
         "MAX_EXECUTION_TIME": "30000",

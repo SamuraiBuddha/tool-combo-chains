@@ -616,7 +616,10 @@ async def main():
         # Initialize options
         init_options = InitializationOptions(
             server_name="hybrid-memory",
-            server_version="0.1.0"
+            server_version="0.1.0",
+            capabilities=ServerCapabilities(
+                tools-ToolsCapability()
+            )
         )
         
         # Run the server
