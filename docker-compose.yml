@@ -2,7 +2,11 @@ version: '3.8'
 
 services:
   postgres:
-    image: pgvector/pgvector:pg16  # Changed from postgres:16 to pgvector-enabled image
+    # Build our custom image with pgvector AND Apache AGE
+    build: 
+      context: .
+      dockerfile: docker/postgres-hybrid/Dockerfile
+    image: cognitive-postgres-hybrid:latest
     container_name: cognitive-postgres
     environment:
       POSTGRES_USER: cognitive
@@ -12,7 +16,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      # No need to mount init-db.sql as it's copied in Dockerfile
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U cognitive"]
       interval: 10s
