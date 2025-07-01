@@ -1,0 +1,161 @@
+{
+  "name": "Shadow Clone Memory Operations",
+  "nodes": [
+    {
+      "id": "webhook_trigger",
+      "type": "n8n-nodes-base.webhook",
+      "position": [250, 300],
+      "parameters": {
+        "path": "shadow-clone-memory",
+        "method": "POST",
+        "responseMode": "lastNode"
+      }
+    },
+    {
+      "id": "spawn_clones",
+      "type": "n8n-nodes-base.splitInBatches",
+      "position": [450, 300],
+      "parameters": {
+        "batchSize": 1,
+        "options": {
+          "reset": false
+        }
+      }
+    },
+    {
+      "id": "entity_check_clone",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [650, 200],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8001/v1/completions",
+        "options": {
+          "bodyContentType": "json"
+        },
+        "body": {
+          "model": "microsoft/Phi-3.5-mini-instruct",
+          "prompt": "Check if entity '{{$json.data.name}}' exists. Return JSON: {exists: boolean, similar: string[]}",
+          "max_tokens": 100,
+          "temperature": 0.1
+        }
+      }
+    },
+    {
+      "id": "priority_clone",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [650, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8001/v1/completions",
+        "options": {
+          "bodyContentType": "json"
+        },
+        "body": {
+          "model": "microsoft/Phi-3.5-mini-instruct",
+          "prompt": "Assign priority for {{$json.data.entity_type}}: {{$json.data.content}}. P0-CRITICAL=infrastructure, P1-HIGH=active, P2-MEDIUM=reference. Return JSON: {priority: string}",
+          "max_tokens": 50,
+          "temperature": 0.1
+        }
+      }
+    },
+    {
+      "id": "relationship_clone",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [650, 400],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8001/v1/completions",
+        "options": {
+          "bodyContentType": "json"
+        },
+        "body": {
+          "model": "microsoft/Phi-3.5-mini-instruct",
+          "prompt": "Map relationships for entity '{{$json.data.name}}'. Types: uses, implements, references, generates. Return JSON: {relationships: [{from, to, type}]}",
+          "max_tokens": 200,
+          "temperature": 0.1
+        }
+      }
+    },
+    {
+      "id": "synthesis_node",
+      "type": "n8n-nodes-base.merge",
+      "position": [850, 300],
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      }
+    },
+    {
+      "id": "memory_operation",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1050, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3002/api/memory",
+        "options": {
+          "bodyContentType": "json"
+        },
+        "body": {
+          "operation": "={{$json.entity_exists ? 'add_observations' : 'store_memory'}}",
+          "entity_name": "={{$json.data.name}}",
+          "content": "={{$json.data.content}}",
+          "entity_type": "={{$json.data.entity_type}}",
+          "metadata": {
+            "priority": "={{$json.priority}}",
+            "auto_assigned": true,
+            "shadow_clone_processed": "={{new Date().toISOString()}}"
+          },
+          "relationships": "={{$json.relationships}}"
+        }
+      }
+    },
+    {
+      "id": "response_formatter",
+      "type": "n8n-nodes-base.set",
+      "position": [1250, 300],
+      "parameters": {
+        "values": {
+          "success": true,
+          "operation_performed": "={{$json.operation}}",
+          "entity": "={{$json.entity_name}}",
+          "priority_assigned": "={{$json.metadata.priority}}",
+          "relationships_created": "={{$json.relationships.length}}",
+          "execution_time_ms": "={{Date.now() - $webhook_trigger.timestamp}}",
+          "method": "shadow_clone_parallelism"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "webhook_trigger": {
+      "main": [[{"node": "spawn_clones", "type": "main", "index": 0}]]
+    },
+    "spawn_clones": {
+      "main": [
+        [{"node": "entity_check_clone", "type": "main", "index": 0}],
+        [{"node": "priority_clone", "type": "main", "index": 0}],
+        [{"node": "relationship_clone", "type": "main", "index": 0}]
+      ]
+    },
+    "entity_check_clone": {
+      "main": [[{"node": "synthesis_node", "type": "main", "index": 0}]]
+    },
+    "priority_clone": {
+      "main": [[{"node": "synthesis_node", "type": "main", "index": 1}]]
+    },
+    "relationship_clone": {
+      "main": [[{"node": "synthesis_node", "type": "main", "index": 2}]]
+    },
+    "synthesis_node": {
+      "main": [[{"node": "memory_operation", "type": "main", "index": 0}]]
+    },
+    "memory_operation": {
+      "main": [[{"node": "response_formatter", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionTimeout": 30,
+    "saveExecutionProgress": true
+  }
+}
