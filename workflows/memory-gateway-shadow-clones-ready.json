@@ -1,0 +1,275 @@
+{
+  "name": "Memory Gateway Shadow Clones - Ready to Use",
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "position": [250, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "memory-shadow-clone",
+        "responseMode": "lastNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "prepare_prompts",
+      "name": "Prepare Clone Prompts",
+      "type": "n8n-nodes-base.set",
+      "position": [450, 300],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "entity_check_prompt",
+              "value": "=Check if entity '{{ $json.body.name }}' exists in the knowledge graph. If it exists, return the exact name. If similar entities exist, list them. Return as JSON: {exists: boolean, exact_match: string, similar: []}"
+            },
+            {
+              "name": "priority_prompt", 
+              "value": "=Assign priority for {{ $json.body.entity_type }}: {{ $json.body.content }}\n\nPriority levels:\n- P0-CRITICAL: Infrastructure, core patterns, tool configs\n- P1-HIGH: Active projects, current work\n- P2-MEDIUM: Reference, completed work\n\nReturn JSON: {priority: string, reasoning: string}"
+            },
+            {
+              "name": "relationship_prompt",
+              "value": "=Identify relationships for entity '{{ $json.body.name }}':\n{{ $json.body.content }}\n\nFind related entities and relationship types (uses, implements, references, generates, inspires).\n\nReturn JSON: {relationships: [{from: string, to: string, type: string}]}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "entity_check_clone",
+      "name": "Clone 1: Entity Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [650, 200],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8000/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameter": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameter": [
+            {
+              "name": "model",
+              "value": "mistralai/Mistral-7B-Instruct-v0.3"
+            },
+            {
+              "name": "messages",
+              "value": "=[{\"role\": \"system\", \"content\": \"You are a memory system entity checker. Always respond with valid JSON.\"}, {\"role\": \"user\", \"content\": \"{{ $node.prepare_prompts.json.entity_check_prompt }}\"}]"
+            },
+            {
+              "name": "temperature",
+              "value": "0.1"
+            },
+            {
+              "name": "max_tokens",
+              "value": "200"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "priority_clone",
+      "name": "Clone 2: Priority Assignment",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [650, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8000/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameter": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameter": [
+            {
+              "name": "model",
+              "value": "mistralai/Mistral-7B-Instruct-v0.3"
+            },
+            {
+              "name": "messages",
+              "value": "=[{\"role\": \"system\", \"content\": \"You are a priority assignment specialist. Always respond with valid JSON.\"}, {\"role\": \"user\", \"content\": \"{{ $node.prepare_prompts.json.priority_prompt }}\"}]"
+            },
+            {
+              "name": "temperature",
+              "value": "0.1"
+            },
+            {
+              "name": "max_tokens",
+              "value": "150"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "relationship_clone",
+      "name": "Clone 3: Relationship Mapper",
+      "type": "n8n-nodes-base.httpRequest", 
+      "position": [650, 400],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8000/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameter": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameter": [
+            {
+              "name": "model",
+              "value": "mistralai/Mistral-7B-Instruct-v0.3"
+            },
+            {
+              "name": "messages", 
+              "value": "=[{\"role\": \"system\", \"content\": \"You are a relationship mapping specialist. Always respond with valid JSON.\"}, {\"role\": \"user\", \"content\": \"{{ $node.prepare_prompts.json.relationship_prompt }}\"}]"
+            },
+            {
+              "name": "temperature",
+              "value": "0.3"
+            },
+            {
+              "name": "max_tokens",
+              "value": "300"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "synthesis",
+      "name": "Synthesize Clone Results",
+      "type": "n8n-nodes-base.code",
+      "position": [850, 300],
+      "parameters": {
+        "language": "javaScript",
+        "code": "// Extract results from clones\nconst entityResult = JSON.parse($input.first().json.choices[0].message.content);\nconst priorityResult = JSON.parse($input.all()[1].json.choices[0].message.content);\nconst relationshipResult = JSON.parse($input.all()[2].json.choices[0].message.content);\n\n// Original request data\nconst originalRequest = $node.webhook.json.body;\n\n// Determine operation type\nconst operation = entityResult.exists ? 'add_observations' : 'store_memory';\n\n// Build appropriate response\nif (operation === 'add_observations') {\n  return {\n    operation: 'add_observations',\n    entity_name: entityResult.exact_match,\n    observations: [originalRequest.content],\n    metadata_update: {\n      priority: priorityResult.priority,\n      last_updated: new Date().toISOString(),\n      auto_assigned: true\n    }\n  };\n} else {\n  return {\n    operation: 'store_memory',\n    name: originalRequest.name,\n    entity_type: originalRequest.entity_type,\n    content: originalRequest.content,\n    metadata: {\n      ...originalRequest.metadata,\n      priority: priorityResult.priority,\n      auto_assigned: true,\n      shadow_clone_processed: new Date().toISOString()\n    },\n    observations: originalRequest.observations || [],\n    relationships: relationshipResult.relationships\n  };\n}"
+      }
+    },
+    {
+      "id": "memory_operation",
+      "name": "Execute Memory Operation",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1050, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "=http://localhost:3002/{{ $json.operation }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameter": [
+            {
+              "name": "Content-Type", 
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.set",
+      "position": [1250, 300],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "success"
+            },
+            {
+              "name": "message",
+              "value": "=Shadow clone memory operation completed"
+            },
+            {
+              "name": "operation_performed",
+              "value": "={{ $node.synthesis.json.operation }}"
+            },
+            {
+              "name": "entity",
+              "value": "={{ $node.synthesis.json.name || $node.synthesis.json.entity_name }}"
+            },
+            {
+              "name": "priority_assigned",
+              "value": "={{ $node.synthesis.json.metadata?.priority || $node.synthesis.json.metadata_update?.priority }}"
+            },
+            {
+              "name": "execution_time_ms",
+              "value": "={{ Date.now() - new Date($node.webhook.json.headers['x-n8n-webhook-timestamp']).getTime() }}"
+            },
+            {
+              "name": "shadow_clones_used",
+              "value": "3"
+            }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "webhook": {
+      "main": [[{"node": "prepare_prompts", "type": "main", "index": 0}]]
+    },
+    "prepare_prompts": {
+      "main": [
+        [
+          {"node": "entity_check_clone", "type": "main", "index": 0},
+          {"node": "priority_clone", "type": "main", "index": 0},
+          {"node": "relationship_clone", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "entity_check_clone": {
+      "main": [[{"node": "synthesis", "type": "main", "index": 0}]]
+    },
+    "priority_clone": {
+      "main": [[{"node": "synthesis", "type": "main", "index": 0}]]
+    },
+    "relationship_clone": {
+      "main": [[{"node": "synthesis", "type": "main", "index": 0}]]
+    },
+    "synthesis": {
+      "main": [[{"node": "memory_operation", "type": "main", "index": 0}]]
+    },
+    "memory_operation": {
+      "main": [[{"node": "response", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "",
+    "saveExecutionProgress": true
+  }
+}
