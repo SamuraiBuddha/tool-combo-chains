@@ -1,0 +1,280 @@
+# Biomimetic Neuromorphic Architecture Stack
+# Multi-database setup mapping to brain regions
+
+version: '3.8'
+
+services:
+  # Hippocampus - Working Memory (Redis)
+  hippocampus:
+    image: redis:7-alpine
+    container_name: biomimetic-hippocampus
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server 
+      --maxmemory 256mb 
+      --maxmemory-policy allkeys-lru
+      --save ""
+      --appendonly no
+    environment:
+      - REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
+    volumes:
+      - hippocampus_data:/data
+    networks:
+      - biomimetic_brain
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Neocortex - Long-term Semantic Memory (PostgreSQL + pgvector)
+  neocortex:
+    image: pgvector/pgvector:pg16
+    container_name: biomimetic-neocortex
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: neocortex_memory
+      POSTGRES_USER: brain_user
+      POSTGRES_PASSWORD: neural_network_2025
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=en_US.UTF-8 --lc-ctype=en_US.UTF-8"
+    volumes:
+      - neocortex_data:/var/lib/postgresql/data
+      - ./docker/neocortex/init-neocortex.sql:/docker-entrypoint-initdb.d/01-init-neocortex.sql
+      - ./docker/neocortex/init-pgvector.sql:/docker-entrypoint-initdb.d/02-init-pgvector.sql
+    networks:
+      - biomimetic_brain
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brain_user -d neocortex_memory"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Cerebellum - Procedural Memory (Neo4j)
+  cerebellum:
+    image: neo4j:5.15-community
+    container_name: biomimetic-cerebellum
+    ports:
+      - "7474:7474"  # Web interface
+      - "7687:7687"  # Bolt protocol
+    environment:
+      NEO4J_AUTH: neo4j/procedural_memory_2025
+      NEO4J_PLUGINS: '["apoc","graph-data-science"]'
+      NEO4J_dbms_security_procedures_unrestricted: apoc.*,gds.*
+      NEO4J_dbms_security_procedures_allowlist: apoc.*,gds.*
+      NEO4J_dbms_memory_heap_initial__size: 512m
+      NEO4J_dbms_memory_heap_max__size: 1G
+      NEO4J_dbms_memory_pagecache_size: 512m
+    volumes:
+      - cerebellum_data:/data
+      - cerebellum_logs:/logs
+      - ./docker/cerebellum/init-cerebellum.cypher:/init/01-init-cerebellum.cypher
+    networks:
+      - biomimetic_brain
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "procedural_memory_2025", "RETURN 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Amygdala - Emotional/Priority Memory (SurrealDB)
+  amygdala:
+    image: surrealdb/surrealdb:latest
+    container_name: biomimetic-amygdala
+    ports:
+      - "8000:8000"
+    command: >
+      start 
+      --auth 
+      --user amygdala_admin 
+      --pass emotional_priority_2025
+      memory://
+    environment:
+      - SURREAL_LOG=info
+      - SURREAL_CAPS_ALLOW_ALL=true
+    volumes:
+      - amygdala_data:/data
+      - ./docker/amygdala/init-amygdala.surql:/init/01-init-amygdala.surql
+    networks:
+      - biomimetic_brain
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Thalamus - Memory Router (Kafka + Zookeeper)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: biomimetic-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+    networks:
+      - biomimetic_brain
+    restart: unless-stopped
+
+  thalamus:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: biomimetic-thalamus
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://thalamus:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 24
+      KAFKA_LOG_RETENTION_BYTES: 1073741824
+      KAFKA_LOG_SEGMENT_BYTES: 268435456
+    volumes:
+      - thalamus_data:/var/lib/kafka/data
+    networks:
+      - biomimetic_brain
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Memory Router Coordinator (Custom Python service)
+  memory-router:
+    build:
+      context: .
+      dockerfile: docker/memory-router/Dockerfile
+    container_name: biomimetic-memory-router
+    depends_on:
+      - hippocampus
+      - neocortex
+      - cerebellum
+      - amygdala
+      - thalamus
+    ports:
+      - "8080:8080"  # Memory router API
+    environment:
+      - REDIS_URL=redis://hippocampus:6379
+      - POSTGRES_URL=postgresql://brain_user:neural_network_2025@neocortex:5432/neocortex_memory
+      - NEO4J_URL=bolt://neo4j:procedural_memory_2025@cerebellum:7687
+      - SURREALDB_URL=http://amygdala_admin:emotional_priority_2025@amygdala:8000
+      - KAFKA_BOOTSTRAP_SERVERS=thalamus:29092
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./src:/app/src
+      - ./config:/app/config
+    networks:
+      - biomimetic_brain
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Monitoring and Observability
+  brain-monitor:
+    image: grafana/grafana:latest
+    container_name: biomimetic-brain-monitor
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=brain_monitor_2025
+      - GF_INSTALL_PLUGINS=redis-datasource,neo4j-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/monitoring/grafana-dashboards:/etc/grafana/provisioning/dashboards
+      - ./docker/monitoring/grafana-datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - biomimetic_brain
+    restart: unless-stopped
+    depends_on:
+      - memory-router
+
+  # Vector Database for Embedding Cache (Optional optimization)
+  vector-cache:
+    image: qdrant/qdrant:latest
+    container_name: biomimetic-vector-cache
+    ports:
+      - "6333:6333"
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__LOG_LEVEL=INFO
+    volumes:
+      - vector_cache_data:/qdrant/storage
+    networks:
+      - biomimetic_brain
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  biomimetic_brain:
+    driver: bridge
+    name: biomimetic_brain_network
+
+volumes:
+  # Working memory (temporary, in-memory)
+  hippocampus_data:
+    driver: local
+    
+  # Long-term semantic memory (persistent)
+  neocortex_data:
+    driver: local
+    
+  # Procedural memory (persistent)
+  cerebellum_data:
+    driver: local
+  cerebellum_logs:
+    driver: local
+    
+  # Emotional/priority memory (persistent)
+  amygdala_data:
+    driver: local
+    
+  # Memory routing system (persistent)
+  thalamus_data:
+    driver: local
+  zookeeper_data:
+    driver: local
+  zookeeper_logs:
+    driver: local
+    
+  # Monitoring
+  grafana_data:
+    driver: local
+    
+  # Vector cache (optional)
+  vector_cache_data:
+    driver: local
+
+# Development override for local development
+# Use: docker-compose -f docker-compose.biomimetic.yml -f docker-compose.dev.yml up
+---
+version: '3.8'
+services:
+  memory-router:
+    volumes:
+      - ./src:/app/src:ro  # Read-only mount for development
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - AUTO_RELOAD=true
