@@ -1,7 +1,5 @@
 # Tool Combo Chains: Cognitive Amplification Stack
 
-> "We spent weeks inventing PostgreSQL!" - Jordan Ehrig, 2025
-
 ## 🎮 The Street Fighter of AI Memory Systems
 
 This repository implements a **Cognitive Amplification Stack** that chains MCP tools together for multiplicative effects. Based on cutting-edge research showing hybrid vector-knowledge graphs achieve 96% accuracy (vs 91% for single approaches), we're building the infrastructure for truly amplified AI cognition.
