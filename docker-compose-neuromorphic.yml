@@ -1,0 +1,325 @@
+# Neuromorphic Cognitive Architecture
+# Brain-Region Database Mapping for Biomimetic Memory
+
+version: '3.8'
+
+services:
+  # 🧠 HIPPOCAMPUS - Working Memory Buffer (Redis)
+  # Function: 7±2 items, immediate access, <5 minute TTL
+  hippocampus:
+    image: redis:7.2-alpine
+    container_name: cognitive-hippocampus
+    command: >
+      redis-server
+      --maxmemory 2gb
+      --maxmemory-policy allkeys-lru
+      --save ""
+      --appendonly no
+    ports:
+      - "6379:6379"
+    networks:
+      - neural-network
+    environment:
+      - REDIS_REPLICATION_MODE=master
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "brain.region=hippocampus"
+      - "memory.type=working"
+      - "access.speed=instant"
+
+  # 🧠 NEOCORTEX - Semantic Long-term Storage (PostgreSQL)
+  # Function: Unlimited capacity, vector + graph, weight-based retention
+  neocortex:
+    build:
+      context: ./docker/postgres-hybrid
+      dockerfile: Dockerfile
+    container_name: cognitive-neocortex
+    environment:
+      - POSTGRES_DB=semantic_memory
+      - POSTGRES_USER=cognitive
+      - POSTGRES_PASSWORD=${NEOCORTEX_PASSWORD:-7HY25Pvj5FAW9sH8nJ8MNc4MRnwLnHIQppSFf7aH}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - neocortex_data:/var/lib/postgresql/data
+      - ./sql/init-biomimetic-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./sql/init-weight-functions.sql:/docker-entrypoint-initdb.d/02-functions.sql
+    networks:
+      - neural-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cognitive -d semantic_memory"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    labels:
+      - "brain.region=neocortex"
+      - "memory.type=semantic"
+      - "storage.type=vector_graph_hybrid"
+
+  # 🧠 CEREBELLUM - Procedural Knowledge (Neo4j)
+  # Function: Skills, patterns, automation, motor memory
+  cerebellum:
+    image: neo4j:5.3-community
+    container_name: cognitive-cerebellum
+    environment:
+      - NEO4J_AUTH=neo4j/procedural_memory_${CEREBELLUM_PASSWORD:-Mv8kPn2Rf7Qx}
+      - NEO4J_PLUGINS=["apoc", "graph-data-science"]
+      - NEO4J_apoc_export_file_enabled=true
+      - NEO4J_apoc_import_file_enabled=true
+      - NEO4J_apoc_import_file_use__neo4j__config=true
+      - NEO4J_ACCEPT_LICENSE_AGREEMENT=yes
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - cerebellum_data:/data
+      - cerebellum_logs:/logs
+      - ./cypher/init-procedural-schema.cypher:/docker-entrypoint-initdb.d/init.cypher
+    networks:
+      - neural-network
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "procedural_memory_${CEREBELLUM_PASSWORD:-Mv8kPn2Rf7Qx}", "RETURN 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    labels:
+      - "brain.region=cerebellum"
+      - "memory.type=procedural"
+      - "function=pattern_automation"
+
+  # 🧠 AMYGDALA - Emotional Significance (SurrealDB)  
+  # Function: Importance weighting, emotional context, priority enhancement
+  amygdala:
+    image: surrealdb/surrealdb:latest
+    container_name: cognitive-amygdala
+    command: >
+      start
+      --bind 0.0.0.0:8000
+      --user cognitive
+      --pass ${AMYGDALA_PASSWORD:-Em0t10n4lM3m0ry}
+      file:///data/emotional_memory.db
+    ports:
+      - "8000:8000"
+    volumes:
+      - amygdala_data:/data
+      - ./surql/init-emotional-schema.surql:/docker-entrypoint-initdb.d/init.surql
+    networks:
+      - neural-network
+    environment:
+      - SURREAL_STRICT=false
+      - SURREAL_LOG=info
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "brain.region=amygdala"
+      - "memory.type=emotional"
+      - "function=importance_weighting"
+
+  # 🧠 BRAINSTEM - Autonomic Data Processing (MongoDB)
+  # Function: Raw data ingestion, preprocessing, autonomic functions
+  brainstem:
+    image: mongo:7.0
+    container_name: cognitive-brainstem
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=cognitive
+      - MONGO_INITDB_ROOT_PASSWORD=${BRAINSTEM_PASSWORD:-Br41nSt3mData}
+      - MONGO_INITDB_DATABASE=autonomic_data
+    ports:
+      - "27017:27017"
+    volumes:
+      - brainstem_data:/data/db
+      - ./mongo/init-autonomic-collections.js:/docker-entrypoint-initdb.d/init.js
+    networks:
+      - neural-network
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "brain.region=brainstem"
+      - "memory.type=autonomic"
+      - "function=data_preprocessing"
+
+  # 🧠 THALAMUS - Neural Routing & Messaging (Kafka)
+  # Function: Inter-region communication, memory routing, coordination
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: cognitive-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - neural-network
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+
+  thalamus:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: cognitive-thalamus
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://thalamus:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_NUM_PARTITIONS: 6  # One for each brain region
+    volumes:
+      - thalamus_data:/var/lib/kafka/data
+    networks:
+      - neural-network
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    labels:
+      - "brain.region=thalamus"
+      - "function=neural_routing"
+      - "communication=inter_region"
+
+  # 📊 MEMORY ANALYTICS - Monitoring & Insights
+  memory-monitor:
+    image: grafana/grafana:latest
+    container_name: cognitive-monitor
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${MONITOR_PASSWORD:-M3m0ryM0n1t0r}
+    volumes:
+      - monitor_data:/var/lib/grafana
+      - ./monitoring/biomimetic-dashboards.json:/etc/grafana/provisioning/dashboards/biomimetic.json
+    networks:
+      - neural-network
+    labels:
+      - "function=memory_analytics"
+      - "type=monitoring"
+
+  # 🧮 CONSOLIDATION SCHEDULER - Sleep Cycle Simulation
+  consolidation-scheduler:
+    build:
+      context: ./src/consolidation
+      dockerfile: Dockerfile
+    container_name: cognitive-consolidation
+    environment:
+      - SWS_INTERVAL=5400  # 90 minutes in seconds
+      - REM_INTERVAL=21600 # 6 hours in seconds
+      - NEOCORTEX_URL=postgresql://cognitive:${NEOCORTEX_PASSWORD:-7HY25Pvj5FAW9sH8nJ8MNc4MRnwLnHIQppSFf7aH}@neocortex:5432/semantic_memory
+      - HIPPOCAMPUS_URL=redis://hippocampus:6379
+      - THALAMUS_URL=thalamus:9092
+    depends_on:
+      - hippocampus
+      - neocortex
+      - thalamus
+    networks:
+      - neural-network
+    labels:
+      - "function=sleep_cycles"
+      - "type=consolidation"
+
+# 🌐 NEURAL NETWORK
+networks:
+  neural-network:
+    driver: bridge
+    labels:
+      - "type=biomimetic_neural_network"
+
+# 💾 PERSISTENT BRAIN REGIONS  
+volumes:
+  # Long-term storage volumes
+  neocortex_data:
+    labels:
+      - "brain.region=neocortex"
+      - "persistence=permanent"
+  cerebellum_data:
+    labels:
+      - "brain.region=cerebellum"
+      - "persistence=permanent"
+  cerebellum_logs:
+    labels:
+      - "brain.region=cerebellum"
+      - "type=logs"
+  amygdala_data:
+    labels:
+      - "brain.region=amygdala"
+      - "persistence=permanent"
+  brainstem_data:
+    labels:
+      - "brain.region=brainstem"
+      - "persistence=permanent"
+      
+  # Communication and coordination volumes
+  thalamus_data:
+    labels:
+      - "brain.region=thalamus"
+      - "persistence=coordination"
+  zookeeper_data:
+    labels:
+      - "function=coordination"
+      - "persistence=temporary"
+  zookeeper_logs:
+    labels:
+      - "function=coordination"
+      - "type=logs"
+      
+  # Monitoring volumes
+  monitor_data:
+    labels:
+      - "function=analytics"
+      - "persistence=dashboards"
+
+# 🔧 DEVELOPMENT PROFILE
+# Use: docker-compose -f docker-compose-neuromorphic.yml --profile dev up
+---
+version: '3.8'
+x-development: &dev-settings
+  profiles: ["dev"]
+  restart: "no"
+  
+services:
+  # Development tools
+  brain-explorer:
+    <<: *dev-settings
+    image: adminer:latest
+    container_name: cognitive-explorer
+    ports:
+      - "8080:8080"
+    networks:
+      - neural-network
+    labels:
+      - "function=development"
+      - "type=database_explorer"
+
+  memory-tester:
+    <<: *dev-settings
+    build:
+      context: ./src/testing
+      dockerfile: Dockerfile
+    container_name: cognitive-tester
+    environment:
+      - TEST_SUITE=biomimetic_integration
+    volumes:
+      - ./tests:/app/tests
+      - ./scripts:/app/scripts
+    networks:
+      - neural-network
+    labels:
+      - "function=testing"
+      - "type=integration_tests"
