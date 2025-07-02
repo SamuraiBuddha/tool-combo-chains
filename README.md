@@ -1,5 +1,8 @@
 # Tool Combo Chains: Cognitive Amplification Stack
 
+<div align="center">
+  <img src="assets/Street-Fighter-30th-Anniversary-Collection-3.png" alt="Perfect!" width="300">
+
 ## 🎮 The Street Fighter of AI Memory Systems
 
 This repository implements a **Cognitive Amplification Stack** that chains MCP tools together for multiplicative effects. Based on cutting-edge research showing hybrid vector-knowledge graphs achieve 96% accuracy (vs 91% for single approaches), we're building the infrastructure for truly amplified AI cognition.
