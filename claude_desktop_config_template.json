@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "hybrid-memory": {
+      "command": "python",
+      "args": [
+        "-u",
+        "-W",
+        "ignore",
+        "-m",
+        "tool_combo_chains.mcp_hybrid_memory"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONWARNINGS": "ignore"
+      }
+    },
+    "MCP_DOCKER": {
+      "command": "docker",
+      "args": ["mcp", "gateway", "run"]
+    },
+    "time-precision": {
+      "command": "python",
+      "args": ["-m", "mcp_time_precision", "--instance-id", "Melchior-001"]
+    }
+  }
+}
