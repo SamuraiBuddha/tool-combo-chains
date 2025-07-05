@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     # Build our custom image with pgvector AND Apache AGE

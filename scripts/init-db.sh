@@ -1,69 +1,90 @@
-#!/bin/bash
-# Initialize the Tool Combo Chains database
+#!/usr/bin/env bash
+# Initialise (idempotently) the Tool‑Combo‑Chains PostgreSQL instance.
+# --------------------------------------------------------------------
+# Spins up/wakes up the Postgres container, waits for readiness, creates
+# required extensions, and writes a full transcript to logs/<timestamp>_init.log
+#
+# The script is intentionally parameter‑driven so it can be reused across CI,
+# dev laptops, and remote VMs without modification.
 
-set -e
+set -Eeuo pipefail
 
-echo "🚀 Tool Combo Chains Database Initialization"
-echo "=========================================="
+# ── USER‑TUNABLE DEFAULTS ─────────────────────────────────────────────
+: "${PG_SERVICE:=cognitive-postgres}"     # Docker container / service name
+: "${PG_USER:=cognitive}"
+: "${PG_DB:=cognitive}"
+: "${REQUIRED_EXTENSIONS:=vector age}"    # Space‑delimited list
+: "${TIMEOUT:=45}"                        # Seconds to wait for pg_isready
 
-# Check if docker is running
-if ! docker info > /dev/null 2>&1; then
-    echo "❌ Docker is not running. Please start Docker and try again."
-    exit 1
-fi
-
-# Check if postgres container is running
-if [ ! "$(docker ps -q -f name=cognitive-postgres)" ]; then
-    echo "⚠️  PostgreSQL container not running. Starting it..."
-    docker-compose up -d postgres
-    echo "⏳ Waiting for PostgreSQL to be ready..."
-    sleep 5
-fi
-
-# Wait for postgres to be healthy
-echo "🔍 Checking PostgreSQL health..."
-timeout=30
-while [ $timeout -gt 0 ]; do
-    if docker exec cognitive-postgres pg_isready -U cognitive > /dev/null 2>&1; then
-        echo "✅ PostgreSQL is ready!"
-        break
-    fi
-    echo "⏳ Waiting for PostgreSQL... ($timeout seconds remaining)"
-    sleep 1
-    timeout=$((timeout - 1))
-done
-
-if [ $timeout -eq 0 ]; then
-    echo "❌ PostgreSQL failed to start in time"
-    exit 1
-fi
-
-# The init-db.sql is automatically run by PostgreSQL on first startup
-# But we'll check if extensions are installed to verify
-echo "🔍 Verifying database extensions..."
-docker exec cognitive-postgres psql -U cognitive -d cognitive -c "SELECT extname FROM pg_extension WHERE extname IN ('vector', 'age');" | grep -E "(vector|age)" > /dev/null
-
-if [ $? -eq 0 ]; then
-    echo "✅ Database extensions installed successfully!"
+# ── DISCOVER THE DOCKER COMPOSE CLI ───────────────────────────────────
+if command -v docker-compose &>/dev/null; then
+    DC="docker-compose"
 else
-    echo "⚠️  Extensions not found. Running manual initialization..."
-    docker exec -i cognitive-postgres psql -U cognitive -d cognitive < scripts/init-db.sql
+    DC="docker compose"
 fi
 
-echo ""
-echo "🎉 Database initialization complete!"
-echo ""
-echo "📊 Database Info:"
-echo "  Host: localhost"
-echo "  Port: 5432"
-echo "  Database: cognitive"
-echo "  User: cognitive"
-echo "  Password: (see .env file)"
-echo ""
-echo "🔗 Connection string:"
-echo "  postgresql://cognitive:password@localhost:5432/cognitive"
-echo ""
-echo "Next steps:"
-echo "  1. Copy .env.example to .env and update values"
-echo "  2. Install MCP servers: ./scripts/install-mcps.sh"
-echo "  3. Start using hybrid memory!"
+# ── PREPARE LOGGING ───────────────────────────────────────────────────
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+LOG_DIR="${SCRIPT_DIR}/logs"
+mkdir -p "${LOG_DIR}"
+
+LOG_FILE="${LOG_DIR}/$(date '+%Y%m%d_%H%M%S')_init.log"
+exec > >(tee -a "${LOG_FILE}") 2>&1
+
+echo "📜  Writing full transcript to ${LOG_FILE}"
+
+# ── START / ATTACH TO THE CONTAINER ───────────────────────────────────
+ALREADY_RUNNING=true
+if ! docker ps -q -f name="^/${PG_SERVICE}$" | grep -q .; then
+    ALREADY_RUNNING=false
+    echo "🚀  ${PG_SERVICE} not running — starting via ${DC} up -d postgres"
+    ${DC} up -d postgres
+fi
+
+# Ensure we clean up if the user hits Ctrl‑C *and* we were the ones who started it
+cleanup() {
+    if [[ "${ALREADY_RUNNING}" == false ]]; then
+        echo "🧹  Stopping ${PG_SERVICE} (was started by this script)"
+        docker stop "${PG_SERVICE}" >/dev/null
+    fi
+}
+trap cleanup INT
+
+# ── WAIT FOR HEALTHY STATUS ───────────────────────────────────────────
+echo "⏳  Waiting up to ${TIMEOUT}s for PostgreSQL to accept connections …"
+until docker exec "${PG_SERVICE}" pg_isready -U "${PG_USER}" -d "${PG_DB}" >/dev/null 2>&1; do
+    (( TIMEOUT-- )) || {
+        echo "❌  PostgreSQL failed to become ready in time."
+        exit 1
+    }
+    sleep 1
+_done
+
+echo "✅  PostgreSQL is ready"
+
+# ── CREATE REQUIRED EXTENSIONS (idempotent) ───────────────────────────
+for EXT in ${REQUIRED_EXTENSIONS}; do
+    echo "🔧  Ensuring extension '${EXT}' exists …"
+    docker exec -i "${PG_SERVICE}" psql -U "${PG_USER}" -d "${PG_DB}" -c "CREATE EXTENSION IF NOT EXISTS \"${EXT}\";" >/dev/null
+_done
+echo "🎉  All extensions present"
+
+# ── FIGURE OUT THE HOST‑MAPPED PORT ───────────────────────────────────
+HOST_PORT=$(docker inspect -f '{{ (index .NetworkSettings.Ports "5432/tcp" 0).HostPort }}' "${PG_SERVICE}" 2>/dev/null || echo 5432)
+
+# ── FINAL SUMMARY ─────────────────────────────────────────────────────
+
+echo "\n🔗  Connection string (§ dev only — no password shown):"
+echo "    postgresql://${PG_USER}@localhost:${HOST_PORT}/${PG_DB}"
+
+echo "\nNext steps:"
+echo "  1. cp .env.example .env && edit credentials"
+echo "  2. ./scripts/install-mcps.sh"
+echo "  3. Run migrations / seed data"
+
+echo "\n🟢  Database initialisation complete!"
+
+# ── KEEP TERMINAL OPEN IF NON‑INTERACTIVE ─────────────────────────────
+if [[ $- != *i* && -t 1 ]]; then
+    read -n 1 -s -r -p "Press any key to close …"
+fi
