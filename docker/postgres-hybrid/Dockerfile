@@ -34,7 +34,7 @@ RUN cd /tmp && \
 RUN echo "shared_preload_libraries = 'age'" >> /usr/share/postgresql/postgresql.conf.sample
 
 # Copy initialization scripts
-COPY scripts/init-db.sql /docker-entrypoint-initdb.d/
+COPY docker/postgres-hybrid/scripts/init-db.sql /docker-entrypoint-initdb.d/
 
 # Set the default database and user
 ENV POSTGRES_DB=cognitive
