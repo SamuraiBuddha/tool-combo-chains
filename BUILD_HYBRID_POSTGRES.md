@@ -49,7 +49,7 @@ Once everything is running, test both vector and graph features:
 
 ```bash
 # Test vector extension
-docker exec cognitive-postgres psql -U cognitive -d cognitive -c "SELECT vector_version();"
+docker exec cognitive-postgres psql -U cognitive -d cognitive -c "\dx"
 
 # Test AGE extension
 docker exec cognitive-postgres psql -U cognitive -d cognitive -c "SELECT age_version();"
